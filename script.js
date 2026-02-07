@@ -18,8 +18,9 @@ const FORM_LABELS_JA = {
 const $ = (id) => document.getElementById(id);
 
 let words = [];
-let current = null; // {lemma, formKey, correct}
+let current = null; 
 let stats = { total: 0, correct: 0, wrong: [] };
+let judged = false;
 
 function normalize(s, yoAsE = true) {
   if (!s) return "";
@@ -53,7 +54,6 @@ function pickRandom(arr) {
 function chooseForm(mode) {
   if (mode === "sg") return pickRandom(FORMS.sg);
   if (mode === "pl") return pickRandom(FORMS.pl);
-  // mix
   const group = pickRandom(["sg", "pl"]);
   return pickRandom(FORMS[group]);
 }
@@ -63,7 +63,7 @@ function pickQuestion() {
 
   if (mode === "wrong") {
     if (!stats.wrong.length) return null;
-    const key = pickRandom(stats.wrong); // lemma|form
+    const key = pickRandom(stats.wrong);
     const [lemma, formKey] = key.split("|");
     const w = words.find(x => x.lemma === lemma);
     if (!w) return null;
@@ -73,12 +73,15 @@ function pickQuestion() {
   const formKey = chooseForm(mode);
   const w = pickRandom(words);
   const correct = w.forms[formKey];
-  if (!correct) return pickQuestion(); // try again
+  if (!correct) return pickQuestion();
   return { lemma: w.lemma, formKey, correct };
 }
 
 function renderQuestion(q) {
   current = q;
+  judged = false;
+  $("nextBtn").disabled = true;
+
   $("tag").textContent = FORM_LABELS_JA[q.formKey] || q.formKey;
   $("lemma").textContent = q.lemma;
   $("answer").value = "";
@@ -115,9 +118,18 @@ function checkAnswer() {
 
   saveStats();
   updateScore();
+
+  judged = true;
+  $("nextBtn").disabled = false;
 }
 
 function nextQuestion() {
+  if (!judged && current) {
+    $("result").innerHTML =
+      `<span class="ng">⚠️ 先に「判定」ボタンを押してください</span>`;
+    return;
+  }
+
   const q = pickQuestion();
   if (!q) {
     $("result").innerHTML = `<span class="ng">⚠️ 復習する問題がありません</span>`;
@@ -136,6 +148,7 @@ async function loadWords() {
 function wireUI() {
   $("checkBtn").addEventListener("click", checkAnswer);
   $("nextBtn").addEventListener("click", nextQuestion);
+
   $("resetBtn").addEventListener("click", () => {
     if (!confirm("成績をリセットしますか？")) return;
     stats = { total: 0, correct: 0, wrong: [] };
@@ -145,11 +158,13 @@ function wireUI() {
   });
 
   $("answer").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") checkAnswer();
+    if (e.key === "Enter") {
+      if (!judged) checkAnswer();
+      else nextQuestion();
+    }
   });
 
   $("mode").addEventListener("change", () => {
-    // wrong mode but no wrong items -> warn
     if ($("mode").value === "wrong" && !stats.wrong.length) {
       $("result").innerHTML = `<span class="ng">⚠️ まだ間違えた問題がありません</span>`;
     }
